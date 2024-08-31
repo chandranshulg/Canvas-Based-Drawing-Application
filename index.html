@@ -75,12 +75,12 @@
         .layer-list .active {
             background-color: #aaa;
         }
-        .shape-edit-controls {
+        .image-controls {
             display: flex;
             justify-content: center;
             margin-bottom: 10px;
         }
-        .shape-edit-controls label, .shape-edit-controls input {
+        .image-controls button {
             margin: 0 5px;
         }
     </style>
@@ -118,6 +118,7 @@
             <option value="customShape">Custom Shape</option>
             <option value="transformShape">Transform Shape</option>
             <option value="group">Group Layers</option>
+            <option value="maskLayer">Mask Layer</option>
         </select>
 
         <label for="toggleGrid">Grid:</label>
@@ -163,15 +164,13 @@
         </li>
     </ul>
 
-    <div class="shape-edit-controls">
-        <label for="cornerRadius">Corner Radius:</label>
-        <input type="range" id="cornerRadius" min="0" max="100" value="0">
-
-        <label for="curveControl">Bezier Curve Control:</label>
-        <input type="range" id="curveControl" min="0" max="100" value="50">
+    <div class="image-controls">
+        <button id="importImage">Import Image</button>
+        <button id="applyMask">Apply Mask</button>
     </div>
 
     <input type="file" id="importFile" style="display: none;">
+    <input type="file" id="imageFileInput" accept="image/*" style="display: none;">
 
     <script>
         const canvasContainer = document.querySelector('.canvas-container');
@@ -202,8 +201,9 @@
         const importCanvasButton = document.getElementById('importCanvas');
         const importFileInput = document.getElementById('importFile');
         const layerList = document.getElementById('layerList');
-        const cornerRadiusInput = document.getElementById('cornerRadius');
-        const curveControlInput = document.getElementById('curveControl');
+        const importImageButton = document.getElementById('importImage');
+        const applyMaskButton = document.getElementById('applyMask');
+        const imageFileInput = document.getElementById('imageFileInput');
 
         let layers = [{ canvas, ctx, opacity: 1, locked: false }];
         let activeLayerIndex = 0;
@@ -220,6 +220,8 @@
         let patternImage = null;
         let selectedShape = null;
         let isTransforming = false;
+        let importedImage = null;
+        let maskCanvas = null;
 
         function startDrawing(e) {
             if (layers[activeLayerIndex].locked) return;
@@ -287,7 +289,7 @@
             ctx.beginPath();
 
             if (toolSelector.value === 'rectangle') {
-                drawRoundedRect(ctx, startX, startY, x - startX, y - startY, cornerRadiusInput.value);
+                drawRoundedRect(ctx, startX, startY, x - startX, y - startY, 0);
             } else if (toolSelector.value === 'circle') {
                 const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
                 ctx.arc(startX, startY, radius, 0, Math.PI * 2);
@@ -295,7 +297,9 @@
                 ctx.moveTo(startX, startY);
                 ctx.lineTo(x, y);
             } else if (toolSelector.value === 'curve') {
-                drawBezierCurve(ctx, startX, startY, x, y, curveControlInput.value);
+                drawBezierCurve(ctx, startX, startY, x, y, 50);
+            } else if (toolSelector.value === 'maskLayer') {
+                applyLayerMask();
             }
 
             ctx.stroke();
@@ -324,6 +328,21 @@
             ctx.moveTo(x1, y1);
             ctx.quadraticCurveTo(controlX, controlY, x2, y2);
             ctx.stroke();
+        }
+
+        function applyLayerMask() {
+            if (!maskCanvas || !importedImage) return;
+            const maskCtx = maskCanvas.getContext('2d');
+            maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+            maskCtx.drawImage(importedImage, 0, 0, maskCanvas.width, maskCanvas.height);
+
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.drawImage(maskCanvas, 0, 0);
+            ctx.globalCompositeOperation = 'source-over';
+
+            maskCanvas = null;
+            importedImage = null;
         }
 
         function addText() {
@@ -378,7 +397,7 @@
                 ctx = layers[activeLayerIndex].ctx;
                 ctx.beginPath();
                 if (path[0].tool === 'rectangle') {
-                    drawRoundedRect(ctx, path[0].x, path[0].y, path[0].x2 - path[0].x, path[0].y2 - path[0].y, cornerRadiusInput.value);
+                    drawRoundedRect(ctx, path[0].x, path[0].y, path[0].x2 - path[0].x, path[0].y2 - path[0].y, 0);
                 } else if (path[0].tool === 'circle') {
                     const radius = Math.sqrt(Math.pow(path[0].x2 - path[0].x, 2) + Math.pow(path[0].y2 - path[0].y, 2));
                     ctx.arc(path[0].x, path[0].y, radius, 0, Math.PI * 2);
@@ -386,7 +405,7 @@
                     ctx.moveTo(path[0].x, path[0].y);
                     ctx.lineTo(path[0].x2, path[0].y2);
                 } else if (path[0].tool === 'curve') {
-                    drawBezierCurve(ctx, path[0].x, path[0].y, path[0].x2, path[0].y2, curveControlInput.value);
+                    drawBezierCurve(ctx, path[0].x, path[0].y, path[0].x2, path[0].y2, 50);
                 } else if (path[0].text) {
                     ctx.font = path[0].font;
                     ctx.fillStyle = path[0].color;
@@ -496,6 +515,28 @@
                 reader.readAsDataURL(file);
             }
         }
+
+        function importImage() {
+            imageFileInput.click();
+        }
+
+        imageFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    importedImage = new Image();
+                    importedImage.onload = function() {
+                        ctx.drawImage(importedImage, 0, 0, canvas.width, canvas.height);
+                        maskCanvas = document.createElement('canvas');
+                        maskCanvas.width = canvas.width;
+                        maskCanvas.height = canvas.height;
+                    };
+                    importedImage.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
 
         function addLayer() {
             const newCanvas = document.createElement('canvas');
@@ -669,6 +710,9 @@
             const rgbValues = rgb.match(/\d+/g);
             return `#${((1 << 24) + (parseInt(rgbValues[0]) << 16) + (parseInt(rgbValues[1]) << 8) + parseInt(rgbValues[2])).toString(16).slice(1).toUpperCase()}`;
         }
+
+        importImageButton.addEventListener('click', importImage);
+        applyMaskButton.addEventListener('click', applyLayerMask);
 
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mouseup', stopDrawing);
