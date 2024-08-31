@@ -63,6 +63,9 @@
 
         <label for="toggleGrid">Grid:</label>
         <input type="checkbox" id="toggleGrid">
+        
+        <label for="bgImage">Background Image:</label>
+        <input type="file" id="bgImage" accept="image/*">
     </div>
 
     <div class="palette">
@@ -90,11 +93,13 @@
         const gridCanvas = document.getElementById('gridOverlay');
         const gridCtx = gridCanvas.getContext('2d');
         const palette = document.querySelector('.palette');
+        const bgImageInput = document.getElementById('bgImage');
 
         let drawing = false;
         let paths = [];
         let currentPath = [];
         let startX, startY;
+        let backgroundImage = null;
 
         function startDrawing(e) {
             drawing = true;
@@ -172,6 +177,9 @@
 
         function redraw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (backgroundImage) {
+                ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+            }
             for (const path of paths) {
                 ctx.beginPath();
                 if (path[0].tool === 'rectangle') {
@@ -246,6 +254,22 @@
             }
         }
 
+        function loadBackgroundImage(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        backgroundImage = img;
+                        redraw();
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
         palette.addEventListener('click', (e) => {
             if (e.target.style.backgroundColor) {
                 colorPicker.value = rgbToHex(e.target.style.backgroundColor);
@@ -264,6 +288,7 @@
         undoButton.addEventListener('click', undo);
         saveButton.addEventListener('click', saveCanvas);
         toggleGrid.addEventListener('change', toggleGridOverlay);
+        bgImageInput.addEventListener('change', loadBackgroundImage);
 
         toggleGridOverlay();  // Initialize the grid based on the checkbox state
     </script>
