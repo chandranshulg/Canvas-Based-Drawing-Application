@@ -106,6 +106,7 @@
             <option value="line">Line</option>
             <option value="eraser">Eraser</option>
             <option value="text">Text</option>
+            <option value="editText">Edit Text</option>
         </select>
 
         <label for="toggleGrid">Grid:</label>
@@ -189,6 +190,7 @@
         let startX, startY;
         let backgroundImage = null;
         let backgroundColor = bgColorPicker.value;
+        let selectedText = null;
 
         function startDrawing(e) {
             if (layers[activeLayerIndex].locked) return;
@@ -199,11 +201,12 @@
             undonePaths = [];  // Clear the redo stack
             if (toolSelector.value === 'brush' || toolSelector.value === 'eraser') draw(e);
             if (toolSelector.value === 'text') addText();
+            if (toolSelector.value === 'editText') selectText(e);
         }
 
         function stopDrawing(e) {
             if (!drawing || layers[activeLayerIndex].locked) return;
-            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text') drawShape(e);
+            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text' && toolSelector.value !== 'editText') drawShape(e);
             drawing = false;
             paths.push([...currentPath]);
             ctx.beginPath();
@@ -270,6 +273,20 @@
                 ctx.fillStyle = colorPicker.value;
                 ctx.fillText(text, startX, startY);
                 currentPath.push({ x: startX, y: startY, text: text, font: ctx.font, color: ctx.fillStyle });
+            }
+        }
+
+        function selectText(e) {
+            const x = e.clientX - canvas.offsetLeft;
+            const y = e.clientY - canvas.offsetTop;
+            selectedText = paths.find(path => path.some(point => point.text && ctx.measureText(point.text).width >= Math.abs(point.x - x) && Math.abs(point.y - y) <= brushSize.value * 5));
+            if (selectedText) {
+                const newText = prompt("Edit the text:", selectedText[0].text);
+                if (newText) {
+                    selectedText[0].text = newText;
+                    selectedText[0].color = colorPicker.value;
+                }
+                redraw();
             }
         }
 
