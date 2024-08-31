@@ -54,8 +54,10 @@
             padding: 0;
         }
         .layer-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 5px;
-            cursor: pointer;
             padding: 5px;
             background-color: #ccc;
             border: 1px solid #000;
@@ -115,7 +117,11 @@
     </div>
 
     <ul class="layer-list" id="layerList">
-        <li class="active">Layer 1</li>
+        <li class="active">
+            Layer 1
+            <input type="range" min="0" max="100" value="100" class="opacity-slider">
+            <input type="checkbox" class="lock-layer"> Lock
+        </li>
     </ul>
 
     <script>
@@ -139,7 +145,7 @@
         const moveDownLayerButton = document.getElementById('moveDownLayer');
         const layerList = document.getElementById('layerList');
 
-        let layers = [{ canvas, ctx }];
+        let layers = [{ canvas, ctx, opacity: 1, locked: false }];
         let activeLayerIndex = 0;
         let drawing = false;
         let paths = [];
@@ -148,6 +154,7 @@
         let backgroundImage = null;
 
         function startDrawing(e) {
+            if (layers[activeLayerIndex].locked) return;
             drawing = true;
             startX = e.clientX - canvas.offsetLeft;
             startY = e.clientY - canvas.offsetTop;
@@ -157,6 +164,7 @@
         }
 
         function stopDrawing(e) {
+            if (!drawing || layers[activeLayerIndex].locked) return;
             if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text') drawShape(e);
             drawing = false;
             paths.push([...currentPath]);
@@ -164,7 +172,7 @@
         }
 
         function draw(e) {
-            if (!drawing) return;
+            if (!drawing || layers[activeLayerIndex].locked) return;
 
             const x = e.clientX - canvas.offsetLeft;
             const y = e.clientY - canvas.offsetTop;
@@ -182,7 +190,7 @@
         }
 
         function drawShape(e) {
-            if (!drawing) return;
+            if (!drawing || layers[activeLayerIndex].locked) return;
 
             const x = e.clientX - canvas.offsetLeft;
             const y = e.clientY - canvas.offsetTop;
@@ -224,6 +232,7 @@
         function redraw() {
             layers.forEach(layer => {
                 layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+                layer.ctx.globalAlpha = layer.opacity;
             });
             if (backgroundImage) {
                 layers[0].ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
@@ -330,10 +339,12 @@
             canvasContainer.appendChild(newCanvas);
 
             const newCtx = newCanvas.getContext('2d');
-            layers.push({ canvas: newCanvas, ctx: newCtx });
+            layers.push({ canvas: newCanvas, ctx: newCtx, opacity: 1, locked: false });
 
             const newLayer = document.createElement('li');
-            newLayer.textContent = `Layer ${layers.length}`;
+            newLayer.innerHTML = `Layer ${layers.length}
+                <input type="range" min="0" max="100" value="100" class="opacity-slider">
+                <input type="checkbox" class="lock-layer"> Lock`;
             newLayer.addEventListener('click', () => setActiveLayer(layers.length - 1));
             layerList.appendChild(newLayer);
 
@@ -355,9 +366,7 @@
 
         function moveUpLayer() {
             if (activeLayerIndex > 0) {
-                const tempLayer = layers[activeLayerIndex];
-                layers[activeLayerIndex] = layers[activeLayerIndex - 1];
-                layers[activeLayerIndex - 1] = tempLayer;
+                swapLayers(activeLayerIndex, activeLayerIndex - 1);
                 setActiveLayer(activeLayerIndex - 1);
                 updateLayerList();
             }
@@ -365,12 +374,18 @@
 
         function moveDownLayer() {
             if (activeLayerIndex < layers.length - 1) {
-                const tempLayer = layers[activeLayerIndex];
-                layers[activeLayerIndex] = layers[activeLayerIndex + 1];
-                layers[activeLayerIndex + 1] = tempLayer;
+                swapLayers(activeLayerIndex, activeLayerIndex + 1);
                 setActiveLayer(activeLayerIndex + 1);
                 updateLayerList();
             }
+        }
+
+        function swapLayers(index1, index2) {
+            const tempLayer = layers[index1];
+            layers[index1] = layers[index2];
+            layers[index2] = tempLayer;
+
+            canvasContainer.insertBefore(layers[index2].canvas, layers[index1].canvas);
         }
 
         function setActiveLayer(index) {
@@ -382,8 +397,21 @@
 
         function updateLayerList() {
             layerList.querySelectorAll('li').forEach((li, i) => {
-                li.textContent = `Layer ${i + 1}`;
+                li.querySelector('.opacity-slider').value = layers[i].opacity * 100;
+                li.querySelector('.lock-layer').checked = layers[i].locked;
+                li.querySelector('.opacity-slider').addEventListener('input', (e) => setLayerOpacity(i, e.target.value));
+                li.querySelector('.lock-layer').addEventListener('change', (e) => setLayerLock(i, e.target.checked));
+                li.firstChild.textContent = `Layer ${i + 1}`;
             });
+        }
+
+        function setLayerOpacity(index, opacity) {
+            layers[index].opacity = opacity / 100;
+            redraw();
+        }
+
+        function setLayerLock(index, isLocked) {
+            layers[index].locked = isLocked;
         }
 
         palette.addEventListener('click', (e) => {
