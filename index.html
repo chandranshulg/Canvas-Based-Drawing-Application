@@ -24,6 +24,10 @@
         .controls > * {
             margin-right: 10px;
         }
+        #gridOverlay {
+            position: absolute;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -43,10 +47,15 @@
             <option value="rectangle">Rectangle</option>
             <option value="circle">Circle</option>
             <option value="line">Line</option>
+            <option value="eraser">Eraser</option>
         </select>
+
+        <label for="toggleGrid">Grid:</label>
+        <input type="checkbox" id="toggleGrid">
     </div>
     
     <canvas id="drawingCanvas" width="800" height="600"></canvas>
+    <canvas id="gridOverlay" width="800" height="600"></canvas>
 
     <script>
         const canvas = document.getElementById('drawingCanvas');
@@ -57,6 +66,9 @@
         const undoButton = document.getElementById('undo');
         const saveButton = document.getElementById('save');
         const toolSelector = document.getElementById('tool');
+        const toggleGrid = document.getElementById('toggleGrid');
+        const gridCanvas = document.getElementById('gridOverlay');
+        const gridCtx = gridCanvas.getContext('2d');
 
         let drawing = false;
         let paths = [];
@@ -68,25 +80,25 @@
             startX = e.clientX - canvas.offsetLeft;
             startY = e.clientY - canvas.offsetTop;
             currentPath = [{ x: startX, y: startY }];
-            if (toolSelector.value === 'brush') draw(e);
+            if (toolSelector.value === 'brush' || toolSelector.value === 'eraser') draw(e);
         }
 
         function stopDrawing(e) {
-            if (toolSelector.value !== 'brush') drawShape(e);
+            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser') drawShape(e);
             drawing = false;
             paths.push([...currentPath]);
             ctx.beginPath();
         }
 
         function draw(e) {
-            if (!drawing || toolSelector.value !== 'brush') return;
+            if (!drawing) return;
 
             const x = e.clientX - canvas.offsetLeft;
             const y = e.clientY - canvas.offsetTop;
 
             ctx.lineWidth = brushSize.value;
             ctx.lineCap = 'round';
-            ctx.strokeStyle = colorPicker.value;
+            ctx.strokeStyle = toolSelector.value === 'eraser' ? '#fff' : colorPicker.value;
 
             ctx.lineTo(x, y);
             ctx.stroke();
@@ -168,12 +180,45 @@
             link.click();
         }
 
+        function drawGrid() {
+            const gridSize = 20;
+            gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+            gridCtx.strokeStyle = '#ccc';
+            gridCtx.lineWidth = 0.5;
+
+            for (let x = 0; x <= gridCanvas.width; x += gridSize) {
+                gridCtx.beginPath();
+                gridCtx.moveTo(x, 0);
+                gridCtx.lineTo(x, gridCanvas.height);
+                gridCtx.stroke();
+            }
+
+            for (let y = 0; y <= gridCanvas.height; y += gridSize) {
+                gridCtx.beginPath();
+                gridCtx.moveTo(0, y);
+                gridCtx.lineTo(gridCanvas.width, y);
+                gridCtx.stroke();
+            }
+        }
+
+        function toggleGridOverlay() {
+            if (toggleGrid.checked) {
+                gridCanvas.style.display = 'block';
+                drawGrid();
+            } else {
+                gridCanvas.style.display = 'none';
+            }
+        }
+
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mouseup', stopDrawing);
         canvas.addEventListener('mousemove', draw);
         clearCanvasButton.addEventListener('click', clearCanvas);
         undoButton.addEventListener('click', undo);
         saveButton.addEventListener('click', saveCanvas);
+        toggleGrid.addEventListener('change', toggleGridOverlay);
+
+        toggleGridOverlay();  // Initialize the grid based on the checkbox state
     </script>
 </body>
 </html>
