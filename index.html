@@ -75,6 +75,14 @@
         .layer-list .active {
             background-color: #aaa;
         }
+        .group-controls {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+        .group-controls button {
+            margin: 0 5px;
+        }
     </style>
 </head>
 <body>
@@ -109,6 +117,7 @@
             <option value="editText">Edit Text</option>
             <option value="customShape">Custom Shape</option>
             <option value="transformShape">Transform Shape</option>
+            <option value="group">Group Layers</option>
         </select>
 
         <label for="toggleGrid">Grid:</label>
@@ -154,6 +163,11 @@
         </li>
     </ul>
 
+    <div class="group-controls">
+        <button id="groupLayers">Group Selected Layers</button>
+        <button id="ungroupLayers">Ungroup Layers</button>
+    </div>
+
     <input type="file" id="importFile" style="display: none;">
 
     <script>
@@ -185,9 +199,13 @@
         const importCanvasButton = document.getElementById('importCanvas');
         const importFileInput = document.getElementById('importFile');
         const layerList = document.getElementById('layerList');
+        const groupLayersButton = document.getElementById('groupLayers');
+        const ungroupLayersButton = document.getElementById('ungroupLayers');
 
         let layers = [{ canvas, ctx, opacity: 1, locked: false }];
         let activeLayerIndex = 0;
+        let selectedLayers = [];
+        let groupedLayers = [];
         let drawing = false;
         let paths = [];
         let currentPath = [];
@@ -212,11 +230,12 @@
             if (toolSelector.value === 'text') addText();
             if (toolSelector.value === 'editText') selectText(e);
             if (toolSelector.value === 'transformShape') startTransformShape(e);
+            if (toolSelector.value === 'group') selectLayer(e);
         }
 
         function stopDrawing(e) {
             if (!drawing || layers[activeLayerIndex].locked) return;
-            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text' && toolSelector.value !== 'editText' && toolSelector.value !== 'customShape' && toolSelector.value !== 'transformShape') drawShape(e);
+            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text' && toolSelector.value !== 'editText' && toolSelector.value !== 'customShape' && toolSelector.value !== 'transformShape' && toolSelector.value !== 'group') drawShape(e);
             drawing = false;
             if (toolSelector.value === 'transformShape' && selectedShape) {
                 finalizeTransformShape(e);
@@ -343,6 +362,39 @@
                 redraw();
                 isTransforming = false;
                 selectedShape = null;
+            }
+        }
+
+        function selectLayer(e) {
+            const layerIndex = Array.from(layerList.children).findIndex(li => li.contains(e.target));
+            if (layerIndex !== -1) {
+                const layer = layers[layerIndex];
+                const layerItem = layerList.children[layerIndex];
+
+                if (selectedLayers.includes(layer)) {
+                    selectedLayers = selectedLayers.filter(l => l !== layer);
+                    layerItem.classList.remove('active');
+                } else {
+                    selectedLayers.push(layer);
+                    layerItem.classList.add('active');
+                }
+            }
+        }
+
+        function groupSelectedLayers() {
+            if (selectedLayers.length > 1) {
+                groupedLayers.push([...selectedLayers]);
+                selectedLayers.forEach(layer => layer.locked = true);
+                selectedLayers = [];
+                updateLayerList();
+            }
+        }
+
+        function ungroupLayers() {
+            if (groupedLayers.length > 0) {
+                const group = groupedLayers.pop();
+                group.forEach(layer => layer.locked = false);
+                updateLayerList();
             }
         }
 
@@ -687,6 +739,9 @@
             const rgbValues = rgb.match(/\d+/g);
             return `#${((1 << 24) + (parseInt(rgbValues[0]) << 16) + (parseInt(rgbValues[1]) << 8) + parseInt(rgbValues[2])).toString(16).slice(1).toUpperCase()}`;
         }
+
+        groupLayersButton.addEventListener('click', groupSelectedLayers);
+        ungroupLayersButton.addEventListener('click', ungroupLayers);
 
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mouseup', stopDrawing);
