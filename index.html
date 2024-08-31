@@ -93,6 +93,8 @@
         
         <label for="bgImage">Background Image:</label>
         <input type="file" id="bgImage" accept="image/*">
+        <label for="bgColor">Background Color:</label>
+        <input type="color" id="bgColor" value="#FFFFFF">
     </div>
 
     <div class="palette">
@@ -114,6 +116,7 @@
         <button id="deleteLayer">Delete Layer</button>
         <button id="moveUpLayer">Move Up</button>
         <button id="moveDownLayer">Move Down</button>
+        <button id="mergeLayers">Merge Layers</button>
     </div>
 
     <ul class="layer-list" id="layerList">
@@ -139,10 +142,12 @@
         const gridCtx = gridCanvas.getContext('2d');
         const palette = document.querySelector('.palette');
         const bgImageInput = document.getElementById('bgImage');
+        const bgColorPicker = document.getElementById('bgColor');
         const addLayerButton = document.getElementById('addLayer');
         const deleteLayerButton = document.getElementById('deleteLayer');
         const moveUpLayerButton = document.getElementById('moveUpLayer');
         const moveDownLayerButton = document.getElementById('moveDownLayer');
+        const mergeLayersButton = document.getElementById('mergeLayers');
         const layerList = document.getElementById('layerList');
 
         let layers = [{ canvas, ctx, opacity: 1, locked: false }];
@@ -152,6 +157,7 @@
         let currentPath = [];
         let startX, startY;
         let backgroundImage = null;
+        let backgroundColor = bgColorPicker.value;
 
         function startDrawing(e) {
             if (layers[activeLayerIndex].locked) return;
@@ -234,6 +240,8 @@
                 layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
                 layer.ctx.globalAlpha = layer.opacity;
             });
+            ctx.fillStyle = backgroundColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
             if (backgroundImage) {
                 layers[0].ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
             }
@@ -330,6 +338,11 @@
             }
         }
 
+        function changeBackgroundColor() {
+            backgroundColor = bgColorPicker.value;
+            redraw();
+        }
+
         function addLayer() {
             const newCanvas = document.createElement('canvas');
             newCanvas.width = canvas.width;
@@ -361,6 +374,28 @@
                 updateLayerList();
             } else {
                 alert('You must have at least one layer.');
+            }
+        }
+
+        function mergeLayers() {
+            if (layers.length > 1) {
+                const baseLayer = layers[0];
+                layers.slice(1).forEach(layer => {
+                    baseLayer.ctx.drawImage(layer.canvas, 0, 0);
+                    canvasContainer.removeChild(layer.canvas);
+                });
+                layers = [baseLayer];
+                layerList.innerHTML = '';
+                const baseLayerItem = document.createElement('li');
+                baseLayerItem.innerHTML = `Layer 1
+                    <input type="range" min="0" max="100" value="100" class="opacity-slider">
+                    <input type="checkbox" class="lock-layer"> Lock`;
+                baseLayerItem.classList.add('active');
+                layerList.appendChild(baseLayerItem);
+                updateLayerList();
+                setActiveLayer(0);
+            } else {
+                alert('There must be more than one layer to merge.');
             }
         }
 
@@ -433,8 +468,10 @@
         saveButton.addEventListener('click', saveCanvas);
         toggleGrid.addEventListener('change', toggleGridOverlay);
         bgImageInput.addEventListener('change', loadBackgroundImage);
+        bgColorPicker.addEventListener('input', changeBackgroundColor);
         addLayerButton.addEventListener('click', addLayer);
         deleteLayerButton.addEventListener('click', deleteLayer);
+        mergeLayersButton.addEventListener('click', mergeLayers);
         moveUpLayerButton.addEventListener('click', moveUpLayer);
         moveDownLayerButton.addEventListener('click', moveDownLayer);
 
