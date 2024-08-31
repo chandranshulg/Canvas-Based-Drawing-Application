@@ -85,6 +85,15 @@
         <label for="brushSize">Brush Size:</label>
         <input type="range" id="brushSize" min="1" max="50" value="5">
 
+        <label for="brushShape">Brush Shape:</label>
+        <select id="brushShape">
+            <option value="circle">Circle</option>
+            <option value="square">Square</option>
+        </select>
+
+        <label for="gradientColor">Gradient Color:</label>
+        <input type="color" id="gradientColor" value="#FF0000">
+
         <button id="clearCanvas">Clear Canvas</button>
         <button id="undo">Undo</button>
         <button id="redo">Redo</button>
@@ -148,6 +157,8 @@
         const ctx = canvas.getContext('2d');
         const colorPicker = document.getElementById('colorPicker');
         const brushSize = document.getElementById('brushSize');
+        const brushShapeSelector = document.getElementById('brushShape');
+        const gradientColorPicker = document.getElementById('gradientColor');
         const clearCanvasButton = document.getElementById('clearCanvas');
         const undoButton = document.getElementById('undo');
         const redoButton = document.getElementById('redo');
@@ -203,17 +214,29 @@
 
             const x = e.clientX - canvas.offsetLeft;
             const y = e.clientY - canvas.offsetTop;
+            const brushShape = brushShapeSelector.value;
 
             ctx.lineWidth = brushSize.value;
             ctx.lineCap = 'round';
-            ctx.strokeStyle = toolSelector.value === 'eraser' ? '#fff' : colorPicker.value;
 
-            ctx.lineTo(x, y);
-            ctx.stroke();
+            const gradient = ctx.createLinearGradient(startX, startY, x, y);
+            gradient.addColorStop(0, colorPicker.value);
+            gradient.addColorStop(1, gradientColorPicker.value);
+            ctx.strokeStyle = gradient;
+
             ctx.beginPath();
-            ctx.moveTo(x, y);
 
-            currentPath.push({ x, y, color: ctx.strokeStyle, width: ctx.lineWidth });
+            if (brushShape === 'circle') {
+                ctx.arc(x, y, brushSize.value / 2, 0, Math.PI * 2);
+            } else if (brushShape === 'square') {
+                ctx.rect(x - brushSize.value / 2, y - brushSize.value / 2, brushSize.value, brushSize.value);
+            }
+
+            ctx.fill();
+            ctx.stroke();
+            ctx.closePath();
+
+            currentPath.push({ x, y, color: ctx.strokeStyle, width: ctx.lineWidth, shape: brushShape });
         }
 
         function drawShape(e) {
@@ -289,6 +312,13 @@
                     ctx.font = path[0].font;
                     ctx.fillStyle = path[0].color;
                     ctx.fillText(path[0].text, path[0].x, path[0].y);
+                } else if (path[0].shape) {
+                    if (path[0].shape === 'circle') {
+                        ctx.arc(path[0].x, path[0].y, path[0].width / 2, 0, Math.PI * 2);
+                    } else if (path[0].shape === 'square') {
+                        ctx.rect(path[0].x - path[0].width / 2, path[0].y - path[0].width / 2, path[0].width, path[0].width);
+                    }
+                    ctx.fill();
                 } else {
                     for (let i = 0; i < path.length; i++) {
                         const point = path[i];
