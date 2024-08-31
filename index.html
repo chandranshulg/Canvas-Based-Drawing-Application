@@ -108,6 +108,7 @@
             <option value="text">Text</option>
             <option value="editText">Edit Text</option>
             <option value="customShape">Custom Shape</option>
+            <option value="transformShape">Transform Shape</option>
         </select>
 
         <label for="toggleGrid">Grid:</label>
@@ -196,6 +197,8 @@
         let backgroundColor = bgColorPicker.value;
         let customShapePoints = [];
         let patternImage = null;
+        let selectedShape = null;
+        let isTransforming = false;
 
         function startDrawing(e) {
             if (layers[activeLayerIndex].locked) return;
@@ -208,12 +211,16 @@
             if (toolSelector.value === 'customShape') drawCustomShape(e);
             if (toolSelector.value === 'text') addText();
             if (toolSelector.value === 'editText') selectText(e);
+            if (toolSelector.value === 'transformShape') startTransformShape(e);
         }
 
         function stopDrawing(e) {
             if (!drawing || layers[activeLayerIndex].locked) return;
-            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text' && toolSelector.value !== 'editText' && toolSelector.value !== 'customShape') drawShape(e);
+            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text' && toolSelector.value !== 'editText' && toolSelector.value !== 'customShape' && toolSelector.value !== 'transformShape') drawShape(e);
             drawing = false;
+            if (toolSelector.value === 'transformShape' && selectedShape) {
+                finalizeTransformShape(e);
+            }
             paths.push([...currentPath]);
             ctx.beginPath();
         }
@@ -299,6 +306,43 @@
 
                 ctx.fill();
                 ctx.stroke();
+            }
+        }
+
+        function startTransformShape(e) {
+            const x = e.clientX - canvas.offsetLeft;
+            const y = e.clientY - canvas.offsetTop;
+
+            selectedShape = paths.find(path => {
+                const point = path[0];
+                return point.tool === 'rectangle' && x >= point.x && x <= point.x2 && y >= point.y && y <= point.y2;
+            });
+
+            if (selectedShape) {
+                isTransforming = true;
+            }
+        }
+
+        function finalizeTransformShape(e) {
+            const x = e.clientX - canvas.offsetLeft;
+            const y = e.clientY - canvas.offsetTop;
+
+            if (isTransforming && selectedShape) {
+                const scaleX = (x - startX) / (selectedShape[0].x2 - selectedShape[0].x);
+                const scaleY = (y - startY) / (selectedShape[0].y2 - selectedShape[0].y);
+
+                selectedShape.forEach(point => {
+                    point.x = startX + (point.x - startX) * scaleX;
+                    point.y = startY + (point.y - startY) * scaleY;
+                    if (point.x2 && point.y2) {
+                        point.x2 = startX + (point.x2 - startX) * scaleX;
+                        point.y2 = startY + (point.y2 - startY) * scaleY;
+                    }
+                });
+
+                redraw();
+                isTransforming = false;
+                selectedShape = null;
             }
         }
 
