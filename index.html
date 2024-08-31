@@ -117,6 +117,8 @@
         <button id="moveUpLayer">Move Up</button>
         <button id="moveDownLayer">Move Down</button>
         <button id="mergeLayers">Merge Layers</button>
+        <button id="exportCanvas">Export</button>
+        <button id="importCanvas">Import</button>
     </div>
 
     <ul class="layer-list" id="layerList">
@@ -126,6 +128,8 @@
             <input type="checkbox" class="lock-layer"> Lock
         </li>
     </ul>
+
+    <input type="file" id="importFile" style="display: none;">
 
     <script>
         const canvasContainer = document.querySelector('.canvas-container');
@@ -148,6 +152,9 @@
         const moveUpLayerButton = document.getElementById('moveUpLayer');
         const moveDownLayerButton = document.getElementById('moveDownLayer');
         const mergeLayersButton = document.getElementById('mergeLayers');
+        const exportCanvasButton = document.getElementById('exportCanvas');
+        const importCanvasButton = document.getElementById('importCanvas');
+        const importFileInput = document.getElementById('importFile');
         const layerList = document.getElementById('layerList');
 
         let layers = [{ canvas, ctx, opacity: 1, locked: false }];
@@ -449,6 +456,62 @@
             layers[index].locked = isLocked;
         }
 
+        function exportCanvas() {
+            const data = {
+                backgroundColor,
+                paths,
+                layers: layers.map(layer => ({
+                    opacity: layer.opacity,
+                    locked: layer.locked,
+                })),
+            };
+            const json = JSON.stringify(data);
+            const blob = new Blob([json], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'canvas_state.json';
+            link.click();
+        }
+
+        function importCanvas() {
+            importFileInput.click();
+        }
+
+        importFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const data = JSON.parse(event.target.result);
+                    backgroundColor = data.backgroundColor;
+                    paths = data.paths;
+                    layers = data.layers.map((layer, index) => {
+                        if (index === 0) return { ...layer, canvas, ctx };
+                        const newCanvas = document.createElement('canvas');
+                        newCanvas.width = canvas.width;
+                        newCanvas.height = canvas.height;
+                        newCanvas.style.zIndex = index;
+                        newCanvas.className = 'layer-canvas';
+                        canvasContainer.appendChild(newCanvas);
+                        return { ...layer, canvas: newCanvas, ctx: newCanvas.getContext('2d') };
+                    });
+                    layerList.innerHTML = '';
+                    layers.forEach((layer, i) => {
+                        const newLayer = document.createElement('li');
+                        newLayer.innerHTML = `Layer ${i + 1}
+                            <input type="range" min="0" max="100" value="${layer.opacity * 100}" class="opacity-slider">
+                            <input type="checkbox" class="lock-layer" ${layer.locked ? 'checked' : ''}> Lock`;
+                        newLayer.addEventListener('click', () => setActiveLayer(i));
+                        layerList.appendChild(newLayer);
+                    });
+                    setActiveLayer(0);
+                    updateLayerList();
+                    redraw();
+                };
+                reader.readAsText(file);
+            }
+        });
+
         palette.addEventListener('click', (e) => {
             if (e.target.style.backgroundColor) {
                 colorPicker.value = rgbToHex(e.target.style.backgroundColor);
@@ -472,8 +535,8 @@
         addLayerButton.addEventListener('click', addLayer);
         deleteLayerButton.addEventListener('click', deleteLayer);
         mergeLayersButton.addEventListener('click', mergeLayers);
-        moveUpLayerButton.addEventListener('click', moveUpLayer);
-        moveDownLayerButton.addEventListener('click', moveDownLayer);
+        exportCanvasButton.addEventListener('click', exportCanvas);
+        importCanvasButton.addEventListener('click', importCanvas);
 
         toggleGridOverlay();  // Initialize the grid based on the checkbox state
     </script>
