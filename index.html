@@ -75,12 +75,12 @@
         .layer-list .active {
             background-color: #aaa;
         }
-        .image-controls {
+        .alignment-controls {
             display: flex;
             justify-content: center;
             margin-bottom: 10px;
         }
-        .image-controls button {
+        .alignment-controls button {
             margin: 0 5px;
         }
     </style>
@@ -119,6 +119,7 @@
             <option value="transformShape">Transform Shape</option>
             <option value="group">Group Layers</option>
             <option value="maskLayer">Mask Layer</option>
+            <option value="duplicateShape">Duplicate Shape</option>
         </select>
 
         <label for="toggleGrid">Grid:</label>
@@ -164,9 +165,13 @@
         </li>
     </ul>
 
-    <div class="image-controls">
-        <button id="importImage">Import Image</button>
-        <button id="applyMask">Apply Mask</button>
+    <div class="alignment-controls">
+        <button id="alignLeft">Align Left</button>
+        <button id="alignCenter">Align Center</button>
+        <button id="alignRight">Align Right</button>
+        <button id="alignTop">Align Top</button>
+        <button id="alignMiddle">Align Middle</button>
+        <button id="alignBottom">Align Bottom</button>
     </div>
 
     <input type="file" id="importFile" style="display: none;">
@@ -201,9 +206,12 @@
         const importCanvasButton = document.getElementById('importCanvas');
         const importFileInput = document.getElementById('importFile');
         const layerList = document.getElementById('layerList');
-        const importImageButton = document.getElementById('importImage');
-        const applyMaskButton = document.getElementById('applyMask');
-        const imageFileInput = document.getElementById('imageFileInput');
+        const alignLeftButton = document.getElementById('alignLeft');
+        const alignCenterButton = document.getElementById('alignCenter');
+        const alignRightButton = document.getElementById('alignRight');
+        const alignTopButton = document.getElementById('alignTop');
+        const alignMiddleButton = document.getElementById('alignMiddle');
+        const alignBottomButton = document.getElementById('alignBottom');
 
         let layers = [{ canvas, ctx, opacity: 1, locked: false }];
         let activeLayerIndex = 0;
@@ -235,6 +243,7 @@
             if (toolSelector.value === 'text') addText();
             if (toolSelector.value === 'editText') selectText(e);
             if (toolSelector.value === 'transformShape') startTransformShape(e);
+            if (toolSelector.value === 'duplicateShape') duplicateShape();
         }
 
         function stopDrawing(e) {
@@ -367,6 +376,77 @@
                 }
                 redraw();
             }
+        }
+
+        function duplicateShape() {
+            if (selectedShape) {
+                const duplicatedShape = JSON.parse(JSON.stringify(selectedShape));
+                duplicatedShape.forEach(point => {
+                    point.x += 20;
+                    point.y += 20;
+                    if (point.x2 && point.y2) {
+                        point.x2 += 20;
+                        point.y2 += 20;
+                    }
+                });
+                paths.push(duplicatedShape);
+                redraw();
+            }
+        }
+
+        function alignShapes(direction) {
+            if (selectedShape) {
+                const shapeBounds = calculateShapeBounds(selectedShape);
+
+                paths.forEach(path => {
+                    const pathBounds = calculateShapeBounds(path);
+                    switch (direction) {
+                        case 'left':
+                            path.forEach(point => point.x += shapeBounds.left - pathBounds.left);
+                            break;
+                        case 'center':
+                            const centerOffset = shapeBounds.left + shapeBounds.width / 2 - pathBounds.left - pathBounds.width / 2;
+                            path.forEach(point => point.x += centerOffset);
+                            break;
+                        case 'right':
+                            path.forEach(point => point.x += shapeBounds.right - pathBounds.right);
+                            break;
+                        case 'top':
+                            path.forEach(point => point.y += shapeBounds.top - pathBounds.top);
+                            break;
+                        case 'middle':
+                            const middleOffset = shapeBounds.top + shapeBounds.height / 2 - pathBounds.top - pathBounds.height / 2;
+                            path.forEach(point => point.y += middleOffset);
+                            break;
+                        case 'bottom':
+                            path.forEach(point => point.y += shapeBounds.bottom - pathBounds.bottom);
+                            break;
+                    }
+                });
+
+                redraw();
+            }
+        }
+
+        function calculateShapeBounds(shape) {
+            const xs = shape.map(point => point.x);
+            const ys = shape.map(point => point.y);
+            const x2s = shape.map(point => point.x2 || point.x);
+            const y2s = shape.map(point => point.y2 || point.y);
+
+            const left = Math.min(...xs, ...x2s);
+            const right = Math.max(...xs, ...x2s);
+            const top = Math.min(...ys, ...y2s);
+            const bottom = Math.max(...ys, ...y2s);
+
+            return {
+                left,
+                right,
+                top,
+                bottom,
+                width: right - left,
+                height: bottom - top,
+            };
         }
 
         function undo() {
@@ -515,28 +595,6 @@
                 reader.readAsDataURL(file);
             }
         }
-
-        function importImage() {
-            imageFileInput.click();
-        }
-
-        imageFileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    importedImage = new Image();
-                    importedImage.onload = function() {
-                        ctx.drawImage(importedImage, 0, 0, canvas.width, canvas.height);
-                        maskCanvas = document.createElement('canvas');
-                        maskCanvas.width = canvas.width;
-                        maskCanvas.height = canvas.height;
-                    };
-                    importedImage.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
-            }
-        });
 
         function addLayer() {
             const newCanvas = document.createElement('canvas');
@@ -706,13 +764,12 @@
             }
         });
 
-        function rgbToHex(rgb) {
-            const rgbValues = rgb.match(/\d+/g);
-            return `#${((1 << 24) + (parseInt(rgbValues[0]) << 16) + (parseInt(rgbValues[1]) << 8) + parseInt(rgbValues[2])).toString(16).slice(1).toUpperCase()}`;
-        }
-
-        importImageButton.addEventListener('click', importImage);
-        applyMaskButton.addEventListener('click', applyLayerMask);
+        alignLeftButton.addEventListener('click', () => alignShapes('left'));
+        alignCenterButton.addEventListener('click', () => alignShapes('center'));
+        alignRightButton.addEventListener('click', () => alignShapes('right'));
+        alignTopButton.addEventListener('click', () => alignShapes('top'));
+        alignMiddleButton.addEventListener('click', () => alignShapes('middle'));
+        alignBottomButton.addEventListener('click', () => alignShapes('bottom'));
 
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mouseup', stopDrawing);
