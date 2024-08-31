@@ -75,12 +75,12 @@
         .layer-list .active {
             background-color: #aaa;
         }
-        .group-controls {
+        .shape-edit-controls {
             display: flex;
             justify-content: center;
             margin-bottom: 10px;
         }
-        .group-controls button {
+        .shape-edit-controls label, .shape-edit-controls input {
             margin: 0 5px;
         }
     </style>
@@ -163,9 +163,12 @@
         </li>
     </ul>
 
-    <div class="group-controls">
-        <button id="groupLayers">Group Selected Layers</button>
-        <button id="ungroupLayers">Ungroup Layers</button>
+    <div class="shape-edit-controls">
+        <label for="cornerRadius">Corner Radius:</label>
+        <input type="range" id="cornerRadius" min="0" max="100" value="0">
+
+        <label for="curveControl">Bezier Curve Control:</label>
+        <input type="range" id="curveControl" min="0" max="100" value="50">
     </div>
 
     <input type="file" id="importFile" style="display: none;">
@@ -199,8 +202,8 @@
         const importCanvasButton = document.getElementById('importCanvas');
         const importFileInput = document.getElementById('importFile');
         const layerList = document.getElementById('layerList');
-        const groupLayersButton = document.getElementById('groupLayers');
-        const ungroupLayersButton = document.getElementById('ungroupLayers');
+        const cornerRadiusInput = document.getElementById('cornerRadius');
+        const curveControlInput = document.getElementById('curveControl');
 
         let layers = [{ canvas, ctx, opacity: 1, locked: false }];
         let activeLayerIndex = 0;
@@ -230,12 +233,11 @@
             if (toolSelector.value === 'text') addText();
             if (toolSelector.value === 'editText') selectText(e);
             if (toolSelector.value === 'transformShape') startTransformShape(e);
-            if (toolSelector.value === 'group') selectLayer(e);
         }
 
         function stopDrawing(e) {
             if (!drawing || layers[activeLayerIndex].locked) return;
-            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text' && toolSelector.value !== 'editText' && toolSelector.value !== 'customShape' && toolSelector.value !== 'transformShape' && toolSelector.value !== 'group') drawShape(e);
+            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text' && toolSelector.value !== 'editText' && toolSelector.value !== 'customShape' && toolSelector.value !== 'transformShape') drawShape(e);
             drawing = false;
             if (toolSelector.value === 'transformShape' && selectedShape) {
                 finalizeTransformShape(e);
@@ -285,117 +287,43 @@
             ctx.beginPath();
 
             if (toolSelector.value === 'rectangle') {
-                ctx.rect(startX, startY, x - startX, y - startY);
+                drawRoundedRect(ctx, startX, startY, x - startX, y - startY, cornerRadiusInput.value);
             } else if (toolSelector.value === 'circle') {
                 const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
                 ctx.arc(startX, startY, radius, 0, Math.PI * 2);
             } else if (toolSelector.value === 'line') {
                 ctx.moveTo(startX, startY);
                 ctx.lineTo(x, y);
+            } else if (toolSelector.value === 'curve') {
+                drawBezierCurve(ctx, startX, startY, x, y, curveControlInput.value);
             }
 
             ctx.stroke();
             currentPath.push({ x: startX, y: startY, x2: x, y2: y, tool: toolSelector.value });
         }
 
-        function drawCustomShape(e) {
-            const x = e.clientX - canvas.offsetLeft;
-            const y = e.clientY - canvas.offsetTop;
-            customShapePoints.push({ x, y });
-
-            if (customShapePoints.length > 1) {
-                ctx.beginPath();
-                ctx.moveTo(customShapePoints[0].x, customShapePoints[0].y);
-
-                customShapePoints.forEach((point, index) => {
-                    if (index === 0) return;
-                    ctx.lineTo(point.x, point.y);
-                });
-
-                ctx.closePath();
-                ctx.strokeStyle = colorPicker.value;
-                ctx.lineWidth = brushSize.value;
-
-                if (patternImage) {
-                    const pattern = ctx.createPattern(patternImage, 'repeat');
-                    ctx.fillStyle = pattern;
-                } else {
-                    ctx.fillStyle = colorPicker.value;
-                }
-
-                ctx.fill();
-                ctx.stroke();
-            }
+        function drawRoundedRect(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
         }
 
-        function startTransformShape(e) {
-            const x = e.clientX - canvas.offsetLeft;
-            const y = e.clientY - canvas.offsetTop;
+        function drawBezierCurve(ctx, x1, y1, x2, y2, control) {
+            const controlX = (x1 + x2) / 2 + control;
+            const controlY = (y1 + y2) / 2 - control;
 
-            selectedShape = paths.find(path => {
-                const point = path[0];
-                return point.tool === 'rectangle' && x >= point.x && x <= point.x2 && y >= point.y && y <= point.y2;
-            });
-
-            if (selectedShape) {
-                isTransforming = true;
-            }
-        }
-
-        function finalizeTransformShape(e) {
-            const x = e.clientX - canvas.offsetLeft;
-            const y = e.clientY - canvas.offsetTop;
-
-            if (isTransforming && selectedShape) {
-                const scaleX = (x - startX) / (selectedShape[0].x2 - selectedShape[0].x);
-                const scaleY = (y - startY) / (selectedShape[0].y2 - selectedShape[0].y);
-
-                selectedShape.forEach(point => {
-                    point.x = startX + (point.x - startX) * scaleX;
-                    point.y = startY + (point.y - startY) * scaleY;
-                    if (point.x2 && point.y2) {
-                        point.x2 = startX + (point.x2 - startX) * scaleX;
-                        point.y2 = startY + (point.y2 - startY) * scaleY;
-                    }
-                });
-
-                redraw();
-                isTransforming = false;
-                selectedShape = null;
-            }
-        }
-
-        function selectLayer(e) {
-            const layerIndex = Array.from(layerList.children).findIndex(li => li.contains(e.target));
-            if (layerIndex !== -1) {
-                const layer = layers[layerIndex];
-                const layerItem = layerList.children[layerIndex];
-
-                if (selectedLayers.includes(layer)) {
-                    selectedLayers = selectedLayers.filter(l => l !== layer);
-                    layerItem.classList.remove('active');
-                } else {
-                    selectedLayers.push(layer);
-                    layerItem.classList.add('active');
-                }
-            }
-        }
-
-        function groupSelectedLayers() {
-            if (selectedLayers.length > 1) {
-                groupedLayers.push([...selectedLayers]);
-                selectedLayers.forEach(layer => layer.locked = true);
-                selectedLayers = [];
-                updateLayerList();
-            }
-        }
-
-        function ungroupLayers() {
-            if (groupedLayers.length > 0) {
-                const group = groupedLayers.pop();
-                group.forEach(layer => layer.locked = false);
-                updateLayerList();
-            }
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.quadraticCurveTo(controlX, controlY, x2, y2);
+            ctx.stroke();
         }
 
         function addText() {
@@ -450,13 +378,15 @@
                 ctx = layers[activeLayerIndex].ctx;
                 ctx.beginPath();
                 if (path[0].tool === 'rectangle') {
-                    ctx.rect(path[0].x, path[0].y, path[0].x2 - path[0].x, path[0].y2 - path[0].y);
+                    drawRoundedRect(ctx, path[0].x, path[0].y, path[0].x2 - path[0].x, path[0].y2 - path[0].y, cornerRadiusInput.value);
                 } else if (path[0].tool === 'circle') {
                     const radius = Math.sqrt(Math.pow(path[0].x2 - path[0].x, 2) + Math.pow(path[0].y2 - path[0].y, 2));
                     ctx.arc(path[0].x, path[0].y, radius, 0, Math.PI * 2);
                 } else if (path[0].tool === 'line') {
                     ctx.moveTo(path[0].x, path[0].y);
                     ctx.lineTo(path[0].x2, path[0].y2);
+                } else if (path[0].tool === 'curve') {
+                    drawBezierCurve(ctx, path[0].x, path[0].y, path[0].x2, path[0].y2, curveControlInput.value);
                 } else if (path[0].text) {
                     ctx.font = path[0].font;
                     ctx.fillStyle = path[0].color;
@@ -739,9 +669,6 @@
             const rgbValues = rgb.match(/\d+/g);
             return `#${((1 << 24) + (parseInt(rgbValues[0]) << 16) + (parseInt(rgbValues[1]) << 8) + parseInt(rgbValues[2])).toString(16).slice(1).toUpperCase()}`;
         }
-
-        groupLayersButton.addEventListener('click', groupSelectedLayers);
-        ungroupLayersButton.addEventListener('click', ungroupLayers);
 
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mouseup', stopDrawing);
