@@ -16,6 +16,7 @@
         }
         .canvas-container {
             position: relative;
+            margin-bottom: 20px;
         }
         canvas {
             border: 2px solid #000;
@@ -25,16 +26,21 @@
             left: 0;
         }
         .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
             margin-bottom: 10px;
         }
         .controls > * {
-            margin-right: 10px;
+            margin: 5px;
         }
         #gridOverlay {
             pointer-events: none;
         }
         .palette {
             display: flex;
+            justify-content: center;
+            margin-bottom: 10px;
         }
         .palette div {
             width: 20px;
@@ -44,20 +50,24 @@
             border: 1px solid #000;
         }
         .layer-controls {
-            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+            margin-bottom: 10px;
         }
         .layer-controls button {
-            margin-right: 10px;
+            margin: 0 5px;
         }
         .layer-list {
             list-style-type: none;
             padding: 0;
+            display: flex;
+            justify-content: center;
         }
         .layer-list li {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 5px;
+            margin: 0 5px;
             padding: 5px;
             background-color: #ccc;
             border: 1px solid #000;
@@ -77,6 +87,7 @@
 
         <button id="clearCanvas">Clear Canvas</button>
         <button id="undo">Undo</button>
+        <button id="redo">Redo</button>
         <button id="save">Save</button>
         
         <select id="tool">
@@ -139,6 +150,7 @@
         const brushSize = document.getElementById('brushSize');
         const clearCanvasButton = document.getElementById('clearCanvas');
         const undoButton = document.getElementById('undo');
+        const redoButton = document.getElementById('redo');
         const saveButton = document.getElementById('save');
         const toolSelector = document.getElementById('tool');
         const toggleGrid = document.getElementById('toggleGrid');
@@ -162,6 +174,7 @@
         let drawing = false;
         let paths = [];
         let currentPath = [];
+        let undonePaths = [];
         let startX, startY;
         let backgroundImage = null;
         let backgroundColor = bgColorPicker.value;
@@ -172,6 +185,7 @@
             startX = e.clientX - canvas.offsetLeft;
             startY = e.clientY - canvas.offsetTop;
             currentPath = [{ x: startX, y: startY }];
+            undonePaths = [];  // Clear the redo stack
             if (toolSelector.value === 'brush' || toolSelector.value === 'eraser') draw(e);
             if (toolSelector.value === 'text') addText();
         }
@@ -238,7 +252,15 @@
 
         function undo() {
             if (paths.length === 0) return;
-            paths.pop();
+            const undonePath = paths.pop();
+            undonePaths.push(undonePath);
+            redraw();
+        }
+
+        function redo() {
+            if (undonePaths.length === 0) return;
+            const redonePath = undonePaths.pop();
+            paths.push(redonePath);
             redraw();
         }
 
@@ -290,6 +312,7 @@
                 layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
             });
             paths = [];
+            undonePaths = [];
         }
 
         function saveCanvas() {
@@ -528,6 +551,7 @@
         canvas.addEventListener('mousemove', draw);
         clearCanvasButton.addEventListener('click', clearCanvas);
         undoButton.addEventListener('click', undo);
+        redoButton.addEventListener('click', redo);
         saveButton.addEventListener('click', saveCanvas);
         toggleGrid.addEventListener('change', toggleGridOverlay);
         bgImageInput.addEventListener('change', loadBackgroundImage);
