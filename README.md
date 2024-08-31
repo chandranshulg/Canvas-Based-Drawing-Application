@@ -4,6 +4,6 @@ In this application you will be able to make drawing like you make in paint choo
 
 ## Live Demo
 
-https://chandranshulg.github.io/Canvas-Based-Drawing-
+https://chandranshulg.github.io/Canvas-Based-Drawing-Application/
 
 I hope You enjoy , I made this one in hurry so feel free to point errors and suggestions
