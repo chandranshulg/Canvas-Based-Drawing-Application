@@ -107,6 +107,7 @@
             <option value="eraser">Eraser</option>
             <option value="text">Text</option>
             <option value="editText">Edit Text</option>
+            <option value="customShape">Custom Shape</option>
         </select>
 
         <label for="toggleGrid">Grid:</label>
@@ -116,6 +117,8 @@
         <input type="file" id="bgImage" accept="image/*">
         <label for="bgColor">Background Color:</label>
         <input type="color" id="bgColor" value="#FFFFFF">
+        <label for="patternFill">Pattern Fill:</label>
+        <input type="file" id="patternFill" accept="image/*">
     </div>
 
     <div class="palette">
@@ -171,6 +174,7 @@
         const palette = document.querySelector('.palette');
         const bgImageInput = document.getElementById('bgImage');
         const bgColorPicker = document.getElementById('bgColor');
+        const patternFillInput = document.getElementById('patternFill');
         const addLayerButton = document.getElementById('addLayer');
         const deleteLayerButton = document.getElementById('deleteLayer');
         const moveUpLayerButton = document.getElementById('moveUpLayer');
@@ -190,7 +194,8 @@
         let startX, startY;
         let backgroundImage = null;
         let backgroundColor = bgColorPicker.value;
-        let selectedText = null;
+        let customShapePoints = [];
+        let patternImage = null;
 
         function startDrawing(e) {
             if (layers[activeLayerIndex].locked) return;
@@ -200,13 +205,14 @@
             currentPath = [{ x: startX, y: startY }];
             undonePaths = [];  // Clear the redo stack
             if (toolSelector.value === 'brush' || toolSelector.value === 'eraser') draw(e);
+            if (toolSelector.value === 'customShape') drawCustomShape(e);
             if (toolSelector.value === 'text') addText();
             if (toolSelector.value === 'editText') selectText(e);
         }
 
         function stopDrawing(e) {
             if (!drawing || layers[activeLayerIndex].locked) return;
-            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text' && toolSelector.value !== 'editText') drawShape(e);
+            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text' && toolSelector.value !== 'editText' && toolSelector.value !== 'customShape') drawShape(e);
             drawing = false;
             paths.push([...currentPath]);
             ctx.beginPath();
@@ -264,6 +270,36 @@
 
             ctx.stroke();
             currentPath.push({ x: startX, y: startY, x2: x, y2: y, tool: toolSelector.value });
+        }
+
+        function drawCustomShape(e) {
+            const x = e.clientX - canvas.offsetLeft;
+            const y = e.clientY - canvas.offsetTop;
+            customShapePoints.push({ x, y });
+
+            if (customShapePoints.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(customShapePoints[0].x, customShapePoints[0].y);
+
+                customShapePoints.forEach((point, index) => {
+                    if (index === 0) return;
+                    ctx.lineTo(point.x, point.y);
+                });
+
+                ctx.closePath();
+                ctx.strokeStyle = colorPicker.value;
+                ctx.lineWidth = brushSize.value;
+
+                if (patternImage) {
+                    const pattern = ctx.createPattern(patternImage, 'repeat');
+                    ctx.fillStyle = pattern;
+                } else {
+                    ctx.fillStyle = colorPicker.value;
+                }
+
+                ctx.fill();
+                ctx.stroke();
+            }
         }
 
         function addText() {
@@ -418,6 +454,21 @@
         function changeBackgroundColor() {
             backgroundColor = bgColorPicker.value;
             redraw();
+        }
+
+        function loadPatternImage(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        patternImage = img;
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
         }
 
         function addLayer() {
@@ -603,6 +654,7 @@
         toggleGrid.addEventListener('change', toggleGridOverlay);
         bgImageInput.addEventListener('change', loadBackgroundImage);
         bgColorPicker.addEventListener('input', changeBackgroundColor);
+        patternFillInput.addEventListener('change', loadPatternImage);
         addLayerButton.addEventListener('click', addLayer);
         deleteLayerButton.addEventListener('click', deleteLayer);
         mergeLayersButton.addEventListener('click', mergeLayers);
