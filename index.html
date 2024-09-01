@@ -25,37 +25,19 @@
             top: 0;
             left: 0;
         }
-        .controls {
+        .controls, .palette, .layer-controls, .alignment-controls {
             display: flex;
-            flex-wrap: wrap;
             justify-content: center;
             margin-bottom: 10px;
         }
-        .controls > * {
+        .controls > *, .palette div, .layer-controls button, .alignment-controls button {
             margin: 5px;
-        }
-        #gridOverlay {
-            pointer-events: none;
-        }
-        .palette {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 10px;
         }
         .palette div {
             width: 20px;
             height: 20px;
-            margin: 0 5px;
             cursor: pointer;
             border: 1px solid #000;
-        }
-        .layer-controls {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 10px;
-        }
-        .layer-controls button {
-            margin: 0 5px;
         }
         .layer-list {
             list-style-type: none;
@@ -75,13 +57,8 @@
         .layer-list .active {
             background-color: #aaa;
         }
-        .alignment-controls {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 10px;
-        }
-        .alignment-controls button {
-            margin: 0 5px;
+        #gridOverlay {
+            pointer-events: none;
         }
     </style>
 </head>
@@ -181,19 +158,15 @@
         const canvasContainer = document.querySelector('.canvas-container');
         const canvas = document.getElementById('drawingCanvas');
         const ctx = canvas.getContext('2d');
+        const gridCanvas = document.getElementById('gridOverlay');
+        const gridCtx = gridCanvas.getContext('2d');
+        
         const colorPicker = document.getElementById('colorPicker');
         const brushSize = document.getElementById('brushSize');
         const brushShapeSelector = document.getElementById('brushShape');
         const gradientColorPicker = document.getElementById('gradientColor');
-        const clearCanvasButton = document.getElementById('clearCanvas');
-        const undoButton = document.getElementById('undo');
-        const redoButton = document.getElementById('redo');
-        const saveButton = document.getElementById('save');
         const toolSelector = document.getElementById('tool');
         const toggleGrid = document.getElementById('toggleGrid');
-        const gridCanvas = document.getElementById('gridOverlay');
-        const gridCtx = gridCanvas.getContext('2d');
-        const palette = document.querySelector('.palette');
         const bgImageInput = document.getElementById('bgImage');
         const bgColorPicker = document.getElementById('bgColor');
         const patternFillInput = document.getElementById('patternFill');
@@ -215,8 +188,6 @@
 
         let layers = [{ canvas, ctx, opacity: 1, locked: false }];
         let activeLayerIndex = 0;
-        let selectedLayers = [];
-        let groupedLayers = [];
         let drawing = false;
         let paths = [];
         let currentPath = [];
@@ -224,13 +195,33 @@
         let startX, startY;
         let backgroundImage = null;
         let backgroundColor = bgColorPicker.value;
-        let customShapePoints = [];
-        let patternImage = null;
         let selectedShape = null;
-        let isTransforming = false;
-        let importedImage = null;
-        let maskCanvas = null;
 
+        // Event Listeners
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mousemove', draw);
+        clearCanvasButton.addEventListener('click', clearCanvas);
+        undoButton.addEventListener('click', undo);
+        redoButton.addEventListener('click', redo);
+        saveButton.addEventListener('click', saveCanvas);
+        toggleGrid.addEventListener('change', toggleGridOverlay);
+        bgImageInput.addEventListener('change', loadBackgroundImage);
+        bgColorPicker.addEventListener('input', changeBackgroundColor);
+        patternFillInput.addEventListener('change', loadPatternImage);
+        addLayerButton.addEventListener('click', addLayer);
+        deleteLayerButton.addEventListener('click', deleteLayer);
+        mergeLayersButton.addEventListener('click', mergeLayers);
+        exportCanvasButton.addEventListener('click', exportCanvas);
+        importCanvasButton.addEventListener('click', importCanvas);
+        alignLeftButton.addEventListener('click', () => alignShapes('left'));
+        alignCenterButton.addEventListener('click', () => alignShapes('center'));
+        alignRightButton.addEventListener('click', () => alignShapes('right'));
+        alignTopButton.addEventListener('click', () => alignShapes('top'));
+        alignMiddleButton.addEventListener('click', () => alignShapes('middle'));
+        alignBottomButton.addEventListener('click', () => alignShapes('bottom'));
+
+        // Drawing Functions
         function startDrawing(e) {
             if (layers[activeLayerIndex].locked) return;
             drawing = true;
@@ -238,23 +229,15 @@
             startY = e.clientY - canvas.offsetTop;
             currentPath = [{ x: startX, y: startY }];
             undonePaths = [];  // Clear the redo stack
-            if (toolSelector.value === 'brush' || toolSelector.value === 'eraser') draw(e);
-            if (toolSelector.value === 'customShape') drawCustomShape(e);
-            if (toolSelector.value === 'text') addText();
-            if (toolSelector.value === 'editText') selectText(e);
-            if (toolSelector.value === 'transformShape') startTransformShape(e);
-            if (toolSelector.value === 'duplicateShape') duplicateShape();
+            draw(e); // Start drawing immediately
         }
 
         function stopDrawing(e) {
             if (!drawing || layers[activeLayerIndex].locked) return;
-            if (toolSelector.value !== 'brush' && toolSelector.value !== 'eraser' && toolSelector.value !== 'text' && toolSelector.value !== 'editText' && toolSelector.value !== 'customShape' && toolSelector.value !== 'transformShape') drawShape(e);
             drawing = false;
-            if (toolSelector.value === 'transformShape' && selectedShape) {
-                finalizeTransformShape(e);
-            }
             paths.push([...currentPath]);
             ctx.beginPath();
+            redraw();
         }
 
         function draw(e) {
@@ -262,7 +245,6 @@
 
             const x = e.clientX - canvas.offsetLeft;
             const y = e.clientY - canvas.offsetTop;
-            const brushShape = brushShapeSelector.value;
 
             ctx.lineWidth = brushSize.value;
             ctx.lineCap = 'round';
@@ -272,88 +254,49 @@
             gradient.addColorStop(1, gradientColorPicker.value);
             ctx.strokeStyle = gradient;
 
-            ctx.beginPath();
+            if (toolSelector.value === 'brush') {
+                drawBrush(x, y);
+            } else if (toolSelector.value === 'eraser') {
+                drawEraser(x, y);
+            } else {
+                drawShape(x, y);
+            }
 
+            currentPath.push({ x, y, tool: toolSelector.value });
+        }
+
+        function drawBrush(x, y) {
+            const brushShape = brushShapeSelector.value;
+            ctx.beginPath();
             if (brushShape === 'circle') {
                 ctx.arc(x, y, brushSize.value / 2, 0, Math.PI * 2);
             } else if (brushShape === 'square') {
                 ctx.rect(x - brushSize.value / 2, y - brushSize.value / 2, brushSize.value, brushSize.value);
             }
-
             ctx.fill();
             ctx.stroke();
             ctx.closePath();
-
-            currentPath.push({ x, y, color: ctx.strokeStyle, width: ctx.lineWidth, shape: brushShape });
         }
 
-        function drawShape(e) {
-            if (!drawing || layers[activeLayerIndex].locked) return;
+        function drawEraser(x, y) {
+            ctx.clearRect(x - brushSize.value / 2, y - brushSize.value / 2, brushSize.value, brushSize.value);
+        }
 
-            const x = e.clientX - canvas.offsetLeft;
-            const y = e.clientY - canvas.offsetTop;
-
-            ctx.lineWidth = brushSize.value;
-            ctx.strokeStyle = colorPicker.value;
+        function drawShape(x, y) {
             ctx.beginPath();
-
             if (toolSelector.value === 'rectangle') {
-                drawRoundedRect(ctx, startX, startY, x - startX, y - startY, 0);
+                ctx.rect(startX, startY, x - startX, y - startY);
             } else if (toolSelector.value === 'circle') {
                 const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
                 ctx.arc(startX, startY, radius, 0, Math.PI * 2);
             } else if (toolSelector.value === 'line') {
                 ctx.moveTo(startX, startY);
                 ctx.lineTo(x, y);
-            } else if (toolSelector.value === 'curve') {
-                drawBezierCurve(ctx, startX, startY, x, y, 50);
-            } else if (toolSelector.value === 'maskLayer') {
-                applyLayerMask();
             }
-
-            ctx.stroke();
-            currentPath.push({ x: startX, y: startY, x2: x, y2: y, tool: toolSelector.value });
-        }
-
-        function drawRoundedRect(ctx, x, y, width, height, radius) {
-            ctx.beginPath();
-            ctx.moveTo(x + radius, y);
-            ctx.lineTo(x + width - radius, y);
-            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-            ctx.lineTo(x + width, y + height - radius);
-            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-            ctx.lineTo(x + radius, y + height);
-            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-            ctx.lineTo(x, y + radius);
-            ctx.quadraticCurveTo(x, y, x + radius, y);
-            ctx.closePath();
-        }
-
-        function drawBezierCurve(ctx, x1, y1, x2, y2, control) {
-            const controlX = (x1 + x2) / 2 + control;
-            const controlY = (y1 + y2) / 2 - control;
-
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.quadraticCurveTo(controlX, controlY, x2, y2);
             ctx.stroke();
         }
 
-        function applyLayerMask() {
-            if (!maskCanvas || !importedImage) return;
-            const maskCtx = maskCanvas.getContext('2d');
-            maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-
-            maskCtx.drawImage(importedImage, 0, 0, maskCanvas.width, maskCanvas.height);
-
-            ctx.globalCompositeOperation = 'destination-in';
-            ctx.drawImage(maskCanvas, 0, 0);
-            ctx.globalCompositeOperation = 'source-over';
-
-            maskCanvas = null;
-            importedImage = null;
-        }
-
+        // Text and Custom Shape Functions
         function addText() {
             const text = prompt("Enter the text:");
             if (text) {
@@ -361,20 +304,6 @@
                 ctx.fillStyle = colorPicker.value;
                 ctx.fillText(text, startX, startY);
                 currentPath.push({ x: startX, y: startY, text: text, font: ctx.font, color: ctx.fillStyle });
-            }
-        }
-
-        function selectText(e) {
-            const x = e.clientX - canvas.offsetLeft;
-            const y = e.clientY - canvas.offsetTop;
-            selectedText = paths.find(path => path.some(point => point.text && ctx.measureText(point.text).width >= Math.abs(point.x - x) && Math.abs(point.y - y) <= brushSize.value * 5));
-            if (selectedText) {
-                const newText = prompt("Edit the text:", selectedText[0].text);
-                if (newText) {
-                    selectedText[0].text = newText;
-                    selectedText[0].color = colorPicker.value;
-                }
-                redraw();
             }
         }
 
@@ -397,7 +326,6 @@
         function alignShapes(direction) {
             if (selectedShape) {
                 const shapeBounds = calculateShapeBounds(selectedShape);
-
                 paths.forEach(path => {
                     const pathBounds = calculateShapeBounds(path);
                     switch (direction) {
@@ -423,7 +351,6 @@
                             break;
                     }
                 });
-
                 redraw();
             }
         }
@@ -449,153 +376,7 @@
             };
         }
 
-        function undo() {
-            if (paths.length === 0) return;
-            const undonePath = paths.pop();
-            undonePaths.push(undonePath);
-            redraw();
-        }
-
-        function redo() {
-            if (undonePaths.length === 0) return;
-            const redonePath = undonePaths.pop();
-            paths.push(redonePath);
-            redraw();
-        }
-
-        function redraw() {
-            layers.forEach(layer => {
-                layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-                layer.ctx.globalAlpha = layer.opacity;
-            });
-            ctx.fillStyle = backgroundColor;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            if (backgroundImage) {
-                layers[0].ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
-            }
-            for (const path of paths) {
-                ctx = layers[activeLayerIndex].ctx;
-                ctx.beginPath();
-                if (path[0].tool === 'rectangle') {
-                    drawRoundedRect(ctx, path[0].x, path[0].y, path[0].x2 - path[0].x, path[0].y2 - path[0].y, 0);
-                } else if (path[0].tool === 'circle') {
-                    const radius = Math.sqrt(Math.pow(path[0].x2 - path[0].x, 2) + Math.pow(path[0].y2 - path[0].y, 2));
-                    ctx.arc(path[0].x, path[0].y, radius, 0, Math.PI * 2);
-                } else if (path[0].tool === 'line') {
-                    ctx.moveTo(path[0].x, path[0].y);
-                    ctx.lineTo(path[0].x2, path[0].y2);
-                } else if (path[0].tool === 'curve') {
-                    drawBezierCurve(ctx, path[0].x, path[0].y, path[0].x2, path[0].y2, 50);
-                } else if (path[0].text) {
-                    ctx.font = path[0].font;
-                    ctx.fillStyle = path[0].color;
-                    ctx.fillText(path[0].text, path[0].x, path[0].y);
-                } else if (path[0].shape) {
-                    if (path[0].shape === 'circle') {
-                        ctx.arc(path[0].x, path[0].y, path[0].width / 2, 0, Math.PI * 2);
-                    } else if (path[0].shape === 'square') {
-                        ctx.rect(path[0].x - path[0].width / 2, path[0].y - path[0].width / 2, path[0].width, path[0].width);
-                    }
-                    ctx.fill();
-                } else {
-                    for (let i = 0; i < path.length; i++) {
-                        const point = path[i];
-                        ctx.strokeStyle = point.color;
-                        ctx.lineWidth = point.width;
-                        if (i === 0) {
-                            ctx.moveTo(point.x, point.y);
-                        } else {
-                            ctx.lineTo(point.x, point.y);
-                        }
-                        ctx.stroke();
-                    }
-                }
-                ctx.stroke();
-                ctx.beginPath();
-            }
-        }
-
-        function clearCanvas() {
-            layers.forEach(layer => {
-                layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-            });
-            paths = [];
-            undonePaths = [];
-        }
-
-        function saveCanvas() {
-            const link = document.createElement('a');
-            link.download = 'drawing.png';
-            link.href = canvas.toDataURL();
-            link.click();
-        }
-
-        function drawGrid() {
-            const gridSize = 20;
-            gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
-            gridCtx.strokeStyle = '#ccc';
-            gridCtx.lineWidth = 0.5;
-
-            for (let x = 0; x <= gridCanvas.width; x += gridSize) {
-                gridCtx.beginPath();
-                gridCtx.moveTo(x, 0);
-                gridCtx.lineTo(x, gridCanvas.height);
-                gridCtx.stroke();
-            }
-
-            for (let y = 0; y <= gridCanvas.height; y += gridSize) {
-                gridCtx.beginPath();
-                gridCtx.moveTo(0, y);
-                gridCtx.lineTo(gridCanvas.width, y);
-                gridCtx.stroke();
-            }
-        }
-
-        function toggleGridOverlay() {
-            if (toggleGrid.checked) {
-                gridCanvas.style.display = 'block';
-                drawGrid();
-            } else {
-                gridCanvas.style.display = 'none';
-            }
-        }
-
-        function loadBackgroundImage(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const img = new Image();
-                    img.onload = function() {
-                        backgroundImage = img;
-                        redraw();
-                    };
-                    img.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
-            }
-        }
-
-        function changeBackgroundColor() {
-            backgroundColor = bgColorPicker.value;
-            redraw();
-        }
-
-        function loadPatternImage(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const img = new Image();
-                    img.onload = function() {
-                        patternImage = img;
-                    };
-                    img.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
-            }
-        }
-
+        // Layer Management Functions
         function addLayer() {
             const newCanvas = document.createElement('canvas');
             newCanvas.width = canvas.width;
@@ -702,6 +483,152 @@
             layers[index].locked = isLocked;
         }
 
+        // Utility Functions
+        function clearCanvas() {
+            layers.forEach(layer => {
+                layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+            });
+            paths = [];
+            undonePaths = [];
+        }
+
+        function saveCanvas() {
+            const link = document.createElement('a');
+            link.download = 'drawing.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        function undo() {
+            if (paths.length === 0) return;
+            const undonePath = paths.pop();
+            undonePaths.push(undonePath);
+            redraw();
+        }
+
+        function redo() {
+            if (undonePaths.length === 0) return;
+            const redonePath = undonePaths.pop();
+            paths.push(redonePath);
+            redraw();
+        }
+
+        function redraw() {
+            layers.forEach(layer => {
+                layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+                layer.ctx.globalAlpha = layer.opacity;
+            });
+            ctx.fillStyle = backgroundColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (backgroundImage) {
+                layers[0].ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+            }
+            for (const path of paths) {
+                ctx = layers[activeLayerIndex].ctx;
+                ctx.beginPath();
+                if (path[0].tool === 'rectangle') {
+                    ctx.rect(path[0].x, path[0].y, path[0].x2 - path[0].x, path[0].y2 - path[0].y);
+                } else if (path[0].tool === 'circle') {
+                    const radius = Math.sqrt(Math.pow(path[0].x2 - path[0].x, 2) + Math.pow(path[0].y2 - path[0].y, 2));
+                    ctx.arc(path[0].x, path[0].y, radius, 0, Math.PI * 2);
+                } else if (path[0].tool === 'line') {
+                    ctx.moveTo(path[0].x, path[0].y);
+                    ctx.lineTo(path[0].x2, path[0].y2);
+                } else if (path[0].text) {
+                    ctx.font = path[0].font;
+                    ctx.fillStyle = path[0].color;
+                    ctx.fillText(path[0].text, path[0].x, path[0].y);
+                } else if (path[0].shape) {
+                    if (path[0].shape === 'circle') {
+                        ctx.arc(path[0].x, path[0].y, path[0].width / 2, 0, Math.PI * 2);
+                    } else if (path[0].shape === 'square') {
+                        ctx.rect(path[0].x - path[0].width / 2, path[0].y - path[0].width / 2, path[0].width, path[0].width);
+                    }
+                    ctx.fill();
+                } else {
+                    for (let i = 0; i < path.length; i++) {
+                        const point = path[i];
+                        ctx.strokeStyle = point.color;
+                        ctx.lineWidth = point.width;
+                        if (i === 0) {
+                            ctx.moveTo(point.x, point.y);
+                        } else {
+                            ctx.lineTo(point.x, point.y);
+                        }
+                        ctx.stroke();
+                    }
+                }
+                ctx.stroke();
+                ctx.beginPath();
+            }
+        }
+
+        function toggleGridOverlay() {
+            if (toggleGrid.checked) {
+                gridCanvas.style.display = 'block';
+                drawGrid();
+            } else {
+                gridCanvas.style.display = 'none';
+            }
+        }
+
+        function drawGrid() {
+            const gridSize = 20;
+            gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+            gridCtx.strokeStyle = '#ccc';
+            gridCtx.lineWidth = 0.5;
+
+            for (let x = 0; x <= gridCanvas.width; x += gridSize) {
+                gridCtx.beginPath();
+                gridCtx.moveTo(x, 0);
+                gridCtx.lineTo(x, gridCanvas.height);
+                gridCtx.stroke();
+            }
+
+            for (let y = 0; y <= gridCanvas.height; y += gridSize) {
+                gridCtx.beginPath();
+                gridCtx.moveTo(0, y);
+                gridCtx.lineTo(gridCanvas.width, y);
+                gridCtx.stroke();
+            }
+        }
+
+        function loadBackgroundImage(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        backgroundImage = img;
+                        redraw();
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function changeBackgroundColor() {
+            backgroundColor = bgColorPicker.value;
+            redraw();
+        }
+
+        function loadPatternImage(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        patternImage = img;
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
         function exportCanvas() {
             const data = {
                 backgroundColor,
@@ -758,37 +685,8 @@
             }
         });
 
-        palette.addEventListener('click', (e) => {
-            if (e.target.style.backgroundColor) {
-                colorPicker.value = rgbToHex(e.target.style.backgroundColor);
-            }
-        });
-
-        alignLeftButton.addEventListener('click', () => alignShapes('left'));
-        alignCenterButton.addEventListener('click', () => alignShapes('center'));
-        alignRightButton.addEventListener('click', () => alignShapes('right'));
-        alignTopButton.addEventListener('click', () => alignShapes('top'));
-        alignMiddleButton.addEventListener('click', () => alignShapes('middle'));
-        alignBottomButton.addEventListener('click', () => alignShapes('bottom'));
-
-        canvas.addEventListener('mousedown', startDrawing);
-        canvas.addEventListener('mouseup', stopDrawing);
-        canvas.addEventListener('mousemove', draw);
-        clearCanvasButton.addEventListener('click', clearCanvas);
-        undoButton.addEventListener('click', undo);
-        redoButton.addEventListener('click', redo);
-        saveButton.addEventListener('click', saveCanvas);
-        toggleGrid.addEventListener('change', toggleGridOverlay);
-        bgImageInput.addEventListener('change', loadBackgroundImage);
-        bgColorPicker.addEventListener('input', changeBackgroundColor);
-        patternFillInput.addEventListener('change', loadPatternImage);
-        addLayerButton.addEventListener('click', addLayer);
-        deleteLayerButton.addEventListener('click', deleteLayer);
-        mergeLayersButton.addEventListener('click', mergeLayers);
-        exportCanvasButton.addEventListener('click', exportCanvas);
-        importCanvasButton.addEventListener('click', importCanvas);
-
-        toggleGridOverlay();  // Initialize the grid based on the checkbox state
+        // Initialize grid overlay state
+        toggleGridOverlay();
     </script>
 </body>
 </html>
